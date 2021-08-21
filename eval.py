@@ -32,15 +32,11 @@ for market in EXCHANGE:
 
     # At the selected number of tickers to the list
     list_500 = querytickers
-    count = 0
     for item in list_500:
-        count = count + 1
-        #Stop after storing 50 stocks
-        if count < len(querytickers):
-            stocks.append(item['symbol'])
+        stocks.append(item['symbol'])
 
 company_counter = 0
-message = ""
+message = []
 
 # Get the following info from each company within the stocks list
 for company in stocks:
@@ -101,7 +97,7 @@ for company in stocks:
             print("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
             + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO))
 
-            message = message + ("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
+            message.append("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
             + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
     
     except:
@@ -110,7 +106,17 @@ for company in stocks:
 # Use the Twilio client
 client = Client(TWILIO_ACCOUNT, TWILIO_TOKEN)
 
-if not message:
+output = ""
+for msg in message:
+    output = output + msg
+
+if not output:
     client.messages.create(from_=TWILIO_NUMBER, to=YOUR_NUMBER, body="No Stocks Today :(")
 else:
-    client.messages.create(from_=TWILIO_NUMBER, to=YOUR_NUMBER, body=message)
+
+    # Check if the message is larger than 1600 characters
+    if len(output) > 1600:
+        for msg in message:
+            client.messages.create(from_=TWILIO_NUMBER, to=YOUR_NUMBER, body=msg)
+    else:
+        client.messages.create(from_=TWILIO_NUMBER, to=YOUR_NUMBER, body=output)
