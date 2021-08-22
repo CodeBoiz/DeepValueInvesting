@@ -20,6 +20,9 @@ EXCHANGE = ["NYSE", "NASDAQ"]
 # What period do you want to view the balance sheets from (quarterly or anually)
 PERIOD = "quarter"
 
+# The minimum price you want to pay attention to
+MIN_PRICE = 6.00
+
 stocks = []
 
 for market in EXCHANGE:
@@ -97,8 +100,9 @@ for company in stocks:
             print("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
             + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO))
 
-            message.append("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
-            + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
+            if price > MIN_PRICE:
+                message.append("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
+                + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
     
     except:
         pass
