@@ -23,6 +23,9 @@ PERIOD = "quarter"
 # The minimum price you want to pay attention to
 MIN_PRICE = 6.00
 
+# The minimum amount of volume a stock should trade
+MIN_VOLUME = 50000
+
 stocks = []
 
 for market in EXCHANGE:
@@ -37,6 +40,8 @@ for market in EXCHANGE:
     list_500 = querytickers
     for item in list_500:
         stocks.append(item['symbol'])
+    
+print("Total Stocks To Evaluate: " + str(len(stocks)))
 
 company_counter = 0
 message = []
@@ -78,6 +83,9 @@ for company in stocks:
         # Get the total cash of the company
         cash = ticker.info["totalCash"]
 
+        # Get volume of the company
+        volume = ticker.info["volume"]
+
         # Get the EBITDA of the company
         EBITDA = ticker.info["ebitda"]
 
@@ -96,13 +104,13 @@ for company in stocks:
         price = ticker.info['currentPrice']
 
         # Only companies where NCAVPS is below the stock price
-        if price < 0.67 * NCAVPS:
+        if price < 0.67 * NCAVPS and volume > MIN_VOLUME:
             print("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
-            + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO))
+            + str(TRAILING_PE_RATIO) + ", Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + ", Volume: " + str(volume))
 
             if price > MIN_PRICE:
                 message.append("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
-                + str(TRAILING_PE_RATIO) + ". Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
+                + str(TRAILING_PE_RATIO) + ", Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + ", Volume: " + str(volume) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
     
     except:
         pass
