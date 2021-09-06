@@ -2,6 +2,7 @@ import yfinance as yf
 from twilio.rest import Client
 import requests
 import math
+from datetime import date
 
 # Helpful website: https://www.netnethunter.com/deep-value-investing-guide/
 # Another: https://algotrading101.com/learn/yahoo-finance-api-guide/
@@ -92,9 +93,33 @@ def calculate_RV(company):
         prev_close_price = close_price
         price_amount_counter += 1
     
-    relized_vol = math.sqrt(252/30 * summation_value)
+    relized_vol = 100 * math.sqrt(252/30 * summation_value)
 
     return relized_vol
+
+def parse_date():
+    today = date.today()
+    d3 = today.strftime("%m/%d/%y")
+    date_split = d3.split('/')
+    fixed_date = "20" + date_split[2] + "-" + date_split[0] + "-10"
+    print(fixed_date)
+
+    return fixed_date
+
+def get_implied_volatility(company):
+    ticker = get_yfinance_ticker(company)
+    date = parse_date()
+    opt = ticker.option_chain(date)
+    #option_price = opt.calls["strike"]
+    option_implied_volotility = opt.calls["impliedVolatility"] * 100
+    print("Found IV For AAPL: " + str(option_implied_volotility))
+
+    return option_implied_volotility
+
+def testing():
+    rv = calculate_RV("AAPL")
+    print("Found RV For AAPL: " + str(rv))
+    get_implied_volatility("AAPL")
 
 stocks = get_tickers()
     
@@ -110,6 +135,7 @@ for company in stocks:
     company_counter = company_counter + 1
 
     RV = calculate_RV(company)
+    IV = get_implied_volatility(company)
 
     print("Found RV = " + str(RV))
 
