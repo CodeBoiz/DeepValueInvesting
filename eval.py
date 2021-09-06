@@ -1,6 +1,7 @@
 import yfinance as yf
 from twilio.rest import Client
 import requests
+import math
 
 # Helpful website: https://www.netnethunter.com/deep-value-investing-guide/
 # Another: https://algotrading101.com/learn/yahoo-finance-api-guide/
@@ -28,18 +29,74 @@ MIN_VOLUME = 50000
 
 stocks = []
 
-for market in EXCHANGE:
+def get_tickers():
+    for market in EXCHANGE:
 
-    # Get the list of tickers
-    querytickers = requests.get(f'https://financialmodelingprep.com/api/v3/search?query=&limit=10000000&exchange=' + market + '&apikey=' + API_KEY)
-    querytickers = querytickers.json()
+        # Get the list of tickers
+        querytickers = requests.get(f'https://financialmodelingprep.com/api/v3/search?query=&limit=10000000&exchange=' + market + '&apikey=' + API_KEY)
+        querytickers = querytickers.json()
 
-    print("Market: " + market + ", Number of Listings: " + str(len(querytickers)))
+        print("Market: " + market + ", Number of Listings: " + str(len(querytickers)))
 
-    # At the selected number of tickers to the list
-    list_500 = querytickers
-    for item in list_500:
-        stocks.append(item['symbol'])
+        # At the selected number of tickers to the list
+        list_500 = querytickers
+        for item in list_500:
+            stocks.append(item['symbol'])
+    
+    return stocks
+
+def get_yfinance_ticker(company):
+    return yf.Ticker(company)
+
+def calculate_NCAVPS(company):
+    # Get the balance sheet of the company
+    Balance_Sheet = requests.get(f'https://financialmodelingprep.com/api/v3/financials/balance-sheet-statement/{company}?period=' + PERIOD + '&apikey=' + API_KEY)
+    Balance_Sheet = Balance_Sheet.json()
+
+    # Get the total current assets
+    total_current_assets = float(Balance_Sheet['financials'][0]['Total current assets'])
+
+    # Get the total liabilities
+    total_liabilities = float(Balance_Sheet['financials'][0]['Total liabilities'])
+
+    # Get the Yahoo Finance info on the curreny company
+    ticker = get_yfinance_ticker(company)
+
+    # Get the number of shares outstanding
+    shares_outstanding = ticker.info["sharesOutstanding"]
+
+    # Here we are calculating the Net Current Asset Value per Share (NCAVPS)
+    # If a stock is trading below the NCAVPS then its a good buy
+    # Aim for the stock price to be 66% less than its NCAVPS
+    NCAVPS = (total_current_assets - total_liabilities) / shares_outstanding
+
+    return NCAVPS
+
+def calculate_RT(PT, PT_minus_one):
+    log_value = math.log(PT / PT_minus_one)
+    return math.pow(log_value, 2)
+
+def calculate_RV(company):
+    ticker = get_yfinance_ticker(company)
+
+    past_30_days = ticker.history(period="1mo")
+
+    price_amount_counter = 0
+    prev_close_price = 0.0
+    summation_value = 0.0
+    for close_price in past_30_days["Close"]:
+        if price_amount_counter > 0:
+            RT = calculate_RT(close_price, prev_close_price)
+            summation_value += RT
+        
+        prev_close_price = close_price
+        price_amount_counter += 1
+    
+    relized_vol = math.sqrt(252/30 * summation_value)
+
+    return relized_vol
+
+stocks = get_tickers()
     
 print("Total Stocks To Evaluate: " + str(len(stocks)))
 
@@ -52,49 +109,17 @@ for company in stocks:
     # Incrament the company counter by one
     company_counter = company_counter + 1
 
+    RV = calculate_RV(company)
+
+    print("Found RV = " + str(RV))
+
     try:
-        # Get the balance sheet of the company
-        Balance_Sheet = requests.get(f'https://financialmodelingprep.com/api/v3/financials/balance-sheet-statement/{company}?period=' + PERIOD + '&apikey=' + API_KEY)
-        Balance_Sheet = Balance_Sheet.json()
+        NCAVPS = calculate_NCAVPS(company)
 
-        # Get the total current assets
-        total_current_assets = float(Balance_Sheet['financials'][0]['Total current assets'])
-
-        # Get the total liabilities
-        total_liabilities = float(Balance_Sheet['financials'][0]['Total liabilities'])
-
-        # Get the Yahoo Finance info on the curreny company
-        ticker = yf.Ticker(company)
-
-        # Get the number of shares outstanding
-        shares_outstanding = ticker.info["sharesOutstanding"]
-
-        # Here we are calculating the Net Current Asset Value per Share (NCAVPS)
-        # If a stock is trading below the NCAVPS then its a good buy
-        # Aim for the stock price to be 66% less than its NCAVPS
-        NCAVPS = (total_current_assets - total_liabilities) / shares_outstanding
-
-        # Get the market cap of the company
-        market_cap = ticker.info["marketCap"]
-
-        # Get the total debt of the company
-        debt = ticker.info["totalDebt"]
-
-        # Get the total cash of the company
-        cash = ticker.info["totalCash"]
+        ticker = get_yfinance_ticker(company)
 
         # Get volume of the company
         volume = ticker.info["volume"]
-
-        # Get the EBITDA of the company
-        EBITDA = ticker.info["ebitda"]
-
-        # Calculate the enterprise value of the company
-        EV = market_cap + debt - cash
-
-        # Calculate the Acquirer's Multiple: EV / EBITDA
-        # EV = Enterprise Value = Market Cap + Debt - Cash
-        ACQUIRER_MULTIPLE = EV / EBITDA
 
         # Get the P/E ratio
         TRAILING_PE_RATIO = ticker.info["trailingPE"]
