@@ -3,9 +3,17 @@ from twilio.rest import Client
 import requests
 import math
 from datetime import date
+import pandas as pd
 
 # Helpful website: https://www.netnethunter.com/deep-value-investing-guide/
 # Another: https://algotrading101.com/learn/yahoo-finance-api-guide/
+# Stack Post for the MACD section https://stackoverflow.com/questions/62969946/how-to-find-macd-and-signal-for-multiple-stocks-in-python-using-yfinance-and-pan
+
+####################################################
+####################################################
+# Settings
+####################################################
+####################################################
 
 # The Financial Modeling Prep API Key
 API_KEY = ""
@@ -15,6 +23,8 @@ TWILIO_ACCOUNT = ""
 TWILIO_TOKEN = ""
 TWILIO_NUMBER = ""
 YOUR_NUMBER = ""
+
+DO_NCAVPS = True
 
 # What exchange to use
 EXCHANGE = ["NYSE", "NASDAQ"]
@@ -29,6 +39,16 @@ MIN_PRICE = 6.00
 MIN_VOLUME = 50000
 
 stocks = []
+
+####################################################
+####################################################
+# Functions
+####################################################
+####################################################
+
+###################################################
+# General Functions
+###################################################
 
 def get_tickers():
     for market in EXCHANGE:
@@ -48,6 +68,19 @@ def get_tickers():
 
 def get_yfinance_ticker(company):
     return yf.Ticker(company)
+
+def get_past_30_day_price(company):
+    ticker = get_yfinance_ticker(company)
+    past_30_days = ticker.history(period="1mo")
+    return past_30_days
+
+def get_past_30_day_price_download(company):
+    past_30_days = yf.download(company, period="1mo")
+    return past_30_days
+
+###################################################
+# NCAVPS Function
+###################################################
 
 def calculate_NCAVPS(company):
     # Get the balance sheet of the company
@@ -73,14 +106,16 @@ def calculate_NCAVPS(company):
 
     return NCAVPS
 
+###################################################
+# Relative Volatility Functions
+###################################################
+
 def calculate_RT(PT, PT_minus_one):
     log_value = math.log(PT / PT_minus_one)
     return math.pow(log_value, 2)
 
 def calculate_RV(company):
-    ticker = get_yfinance_ticker(company)
-
-    past_30_days = ticker.history(period="1mo")
+    past_30_days = get_past_30_day_price(company)
 
     price_amount_counter = 0
     prev_close_price = 0.0
@@ -97,11 +132,15 @@ def calculate_RV(company):
 
     return relized_vol
 
+###################################################
+# Implied Volatility Functions
+###################################################
+
 def parse_date():
     today = date.today()
     d3 = today.strftime("%m/%d/%y")
     date_split = d3.split('/')
-    fixed_date = "20" + date_split[2] + "-" + date_split[0] + "-10"
+    fixed_date = "20" + date_split[2] + "-" + date_split[0] + "-17"
     print(fixed_date)
 
     return fixed_date
@@ -112,14 +151,47 @@ def get_implied_volatility(company):
     opt = ticker.option_chain(date)
     #option_price = opt.calls["strike"]
     option_implied_volotility = opt.calls["impliedVolatility"] * 100
-    print("Found IV For AAPL: " + str(option_implied_volotility))
+    print("Found IV: " + str(option_implied_volotility))
 
     return option_implied_volotility
 
-def testing():
+###################################################
+# MACD Functions
+###################################################
+
+def calculate_MACD(DF, a, b, c):
+    df = DF.copy()
+    df['MA Fast'] = df['Adj Close'].ewm(span=a, min_periods=a).mean()
+    df['MA Slow'] = df['Adj Close'].ewm(span=b, min_periods=b).mean()
+    df["MACD"] = df['MA Fast'] - df['MA Slow']
+    df['Signal'] = df.MACD.ewm(span=c, min_periods=c).mean()
+    df = df.dropna()
+
+    return df
+
+###################################################
+# Testing Functions
+###################################################
+
+def testing_RV_and_IV():
     rv = calculate_RV("AAPL")
     print("Found RV For AAPL: " + str(rv))
     get_implied_volatility("AAPL")
+
+def testing_MACD():
+    price_history = get_past_30_day_price_download("AAPL")
+    df = pd.DataFrame(price_history)
+    result = calculate_MACD(df, 12, 26, 9)
+    print("MACD")
+    print(result["MACD"])
+
+####################################################
+####################################################
+# Run Functions
+####################################################
+####################################################
+
+testing_MACD()
 
 stocks = get_tickers()
     
@@ -131,40 +203,47 @@ message = []
 # Get the following info from each company within the stocks list
 for company in stocks:
 
-    # Incrament the company counter by one
-    company_counter = company_counter + 1
+    if DO_NCAVPS:
+        # Incrament the company counter by one
+        company_counter = company_counter + 1
 
-    RV = calculate_RV(company)
-    IV = get_implied_volatility(company)
+        try:
+            NCAVPS = calculate_NCAVPS(company)
 
-    print("Found RV = " + str(RV))
+            ticker = get_yfinance_ticker(company)
 
-    try:
-        NCAVPS = calculate_NCAVPS(company)
+            # Get volume of the company
+            volume = ticker.info["volume"]
 
-        ticker = get_yfinance_ticker(company)
+            # Get the P/E ratio
+            TRAILING_PE_RATIO = ticker.info["trailingPE"]
+            FORWARD_PE_RATIO = ticker.info["forwardPE"]
 
-        # Get volume of the company
-        volume = ticker.info["volume"]
+            # Get the current price of the company
+            price = ticker.info['currentPrice']
 
-        # Get the P/E ratio
-        TRAILING_PE_RATIO = ticker.info["trailingPE"]
-        FORWARD_PE_RATIO = ticker.info["forwardPE"]
+            # Only companies where NCAVPS is below the stock price
+            if price < 0.67 * NCAVPS and volume > MIN_VOLUME:
+                print("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
+                + str(TRAILING_PE_RATIO) + ", Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + ", Volume: " + str(volume))
 
-        # Get the current price of the company
-        price = ticker.info['currentPrice']
+                if price > MIN_PRICE:
+                    message.append("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
+                    + str(TRAILING_PE_RATIO) + ", Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + ", Volume: " + str(volume) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
+        
+        except:
+            pass
+    else:
+        print("here")
 
-        # Only companies where NCAVPS is below the stock price
-        if price < 0.67 * NCAVPS and volume > MIN_VOLUME:
-            print("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
-            + str(TRAILING_PE_RATIO) + ", Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + ", Volume: " + str(volume))
 
-            if price > MIN_PRICE:
-                message.append("Company " + str(company_counter) + ": " + company + ", Current Price: " + str(price) + ", NCAVPS: " + str(NCAVPS) + ", Trailing P/E Ratio: " 
-                + str(TRAILING_PE_RATIO) + ", Forward P/E Ratio: " + str(FORWARD_PE_RATIO) + ", Volume: " + str(volume) + "\n" + "https://finance.yahoo.com/quote/" + company + "/\n")
-    
-    except:
-        pass
+# DO SOMETHING WITH MACD AND RSS HERE, LOOKING FOR STOCKS THAT ARE GOING TO CHANGE BASED ON PAST TRENDS
+
+####################################################
+####################################################
+# Messaging Functionality
+####################################################
+####################################################
 
 # Use the Twilio client
 client = Client(TWILIO_ACCOUNT, TWILIO_TOKEN)
